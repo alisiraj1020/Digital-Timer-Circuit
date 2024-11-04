@@ -1,0 +1,158 @@
+#include <TimerOne.h>
+//Define 74HC595 Connections with arduio
+const int Data =7;
+const int Clock =8;
+const int Latch =6;
+const int SEG0 =5;
+const int SEG1 =4;
+const int SEG2 =3;
+const int SEG3 =2;
+const int Buzzer =13; //Buzzer Up down keys connection
+const int Min_key =10;
+const int Sec_key =9;
+int cc =0;
+char Value [4];
+const char SegData []=
+{0x3F,0x06,0x5B,0x4F,0x66,0x6D,0x7D,0x07,0x7F,0x6F};
+int MIN =0, SEC =0, count =10;
+void setup () { 
+ // initialize the digital pin as an output.
+Serial . begin (9600);
+pinMode ( Data , OUTPUT );
+pinMode ( Clock , OUTPUT );
+pinMode ( Latch , OUTPUT );
+pinMode ( SEG0 , OUTPUT );
+pinMode ( SEG1 , OUTPUT );
+pinMode ( SEG2 , OUTPUT );
+pinMode ( SEG3 , OUTPUT );
+pinMode ( Buzzer , OUTPUT );
+digitalWrite ( Buzzer , LOW ); //Turn off buzzer
+pinMode ( Min_key , INPUT ); //Keys or proxmity sensor
+pinMode ( Sec_key , INPUT );
+digitalWrite ( Min_key , HIGH ); //Pull up for keys
+digitalWrite ( Sec_key , HIGH ); 
+//Initialize Display Scanner
+ cc =0;
+ Timer1 . initialize (10000); // set a timer of length 100000 microseconds (or 0.1 sec - or 10Hz => the led will blink 5 times, 5 cycles of on-and-off, per second)
+ Timer1 . attachInterrupt ( timerIsr ); // attach the service routine here
+}
+// Loop
+void loop () {
+ char cMIN [4], cSEC [4];
+ if( count ==0)
+ { 
+ count =10; //1 Second as we have loop delay of 100mSec 
+ if( MIN >0) //if Minutes are greater than zero
+ {
+ if( SEC ==0)
+ {
+ MIN --;
+ SEC =60;
+ }
+ }
+ SEC --;
+ //Check that timer is zero
+ if( MIN ==0 && SEC ==1) //Second is kept one to avoid beeping at normal zero
+ {
+ digitalWrite ( Buzzer , HIGH ); //Turn on Buzzer 
+ }
+ }
+ if( MIN > 0 || SEC > 0)
+ {
+ count --;
+ }
+ if( digitalRead ( Min_key )== LOW )
+ {
+ delay (10);
+ MIN ++;
+ digitalWrite ( Buzzer , LOW ); //Turn off Buzzer
+ }
+ if( digitalRead ( Sec_key )== LOW )
+ {
+ delay (10); //debounce
+ SEC ++;
+ if( SEC >59) //60 seconds = 1 minute
+ {
+ MIN ++;
+ SEC =0;
+ }
+ digitalWrite ( Buzzer , LOW ); //Turn off Buzzer
+ } 
+ if( digitalRead ( Sec_key )== LOW &&
+digitalRead ( Min_key )== LOW ) //If both Switches pressed clear timer
+ {
+ MIN =0;
+ SEC =0;
+ digitalWrite ( Buzzer , HIGH ); //Give Beep
+ delay (500); 
+ digitalWrite ( Buzzer , LOW );
+ }
+ //Display Count on Segments
+sprintf ( cMIN ,"%02d", MIN ); //We get ASCII array
+sprintf ( cSEC ,"%02d", SEC ); //We get ASCII array
+Serial . println ( cMIN ); //Print Count on Serial for debug
+Value [0]= cMIN [0] & 0x0F; //Anding with 0x0F to remove upper nibble
+Value [1]= cMIN [1] & 0x0F; //Ex. number 2 in ASCII is 0x32 we want only 2
+Value [2]= cSEC [0] & 0x0F;
+Value [3]= cSEC [1] & 0x0F;
+delay (100);
+}
+// TIMER 1 OVERFLOW INTTERRUPT FOR DISPALY
+void timerIsr ()
+{
+ cc ++;
+ if( cc ==5) //We have only 4 digits
+ { cc =1;}
+ Scanner ();
+ TCNT0 =0xCC;
+}
+// Generates Digit
+void DisplayDigit (char d )
+{
+ int i ;
+for( i =0; i <8; i ++) //Shift bit by bit data in shift register
+{
+ if(( d & 0x80)==0x80)
+ {
+ digitalWrite ( Data , HIGH );
+ }
+ else
+ {
+ digitalWrite ( Data , LOW );
+ }
+ d = d <<1;
+ //Give Clock pulse
+ digitalWrite ( Clock , LOW ); 
+ digitalWrite ( Clock , HIGH );
+}
+ //Latch the data
+digitalWrite ( Latch , LOW );
+digitalWrite ( Latch , HIGH ); 
+}
+// SCAN DISPLAY FUNCTION
+void Scanner ()
+{
+ switch ( cc ) //Depending on which digit is selected give output
+ {
+ case 1:
+ digitalWrite ( SEG3 , HIGH ); 
+ DisplayDigit ( SegData [ Value [0]]);
+ digitalWrite ( SEG0 , LOW );
+ break;
+ case 2:
+ digitalWrite ( SEG0 , HIGH );
+ DisplayDigit ( SegData [ Value [1]] | 0x80); //Decimal Point
+ digitalWrite ( SEG1 , LOW );
+ break;
+ case 3:
+ digitalWrite ( SEG1 , HIGH );
+ DisplayDigit ( SegData [ Value [2]]);
+ digitalWrite ( SEG2 , LOW );
+ break;
+ case 4:
+ digitalWrite ( SEG2 , HIGH ); 
+ DisplayDigit ( SegData [ Value [3]]);
+ digitalWrite ( SEG3 , LOW ); 
+ break; 
+ }
+}
